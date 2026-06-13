@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- App-private external files (GeoSnap Cam folder) -->
+    <external-files-path name="geosnap_media" path="." />
+    <!-- App cache directory (temp files before gallery save) -->
+    <cache-path name="geosnap_cache" path="." />
+</paths>
