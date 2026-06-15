@@ -24,10 +24,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -58,6 +61,7 @@ fun MediaPreviewScreen(
     var playbackRequest by remember { mutableStateOf<Boolean?>(null) }
     var seekRequest by remember { mutableStateOf<Pair<Long, Int>?>(null) }
     var seekRequestCount by remember { mutableIntStateOf(0) }
+    var isMediaZoomed by remember { mutableStateOf(false) }
 
     // Initialize ViewModel on first composition
     LaunchedEffect(initialPath) {
@@ -80,6 +84,7 @@ fun MediaPreviewScreen(
         viewModel.onPageChanged(pagerState.currentPage)
         playbackRequest = null
         seekRequest = null
+        isMediaZoomed = false
     }
 
     // Background fades with drag
@@ -99,19 +104,18 @@ fun MediaPreviewScreen(
                     scaleX = uiState.dragScale
                     scaleY = uiState.dragScale
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures { viewModel.toggleChrome() }
-                }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (viewModel.shouldDismiss(0f)) onBack()
-                            else viewModel.snapBack()
-                        },
-                        onVerticalDrag = { _, dragAmount ->
-                            viewModel.onDragUpdate(dragAmount)
-                        }
-                    )
+                .pointerInput(isMediaZoomed) {
+                    if (!isMediaZoomed) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (viewModel.shouldDismiss(0f)) onBack()
+                                else viewModel.snapBack()
+                            },
+                            onVerticalDrag = { _, dragAmount ->
+                                viewModel.onDragUpdate(dragAmount)
+                            }
+                        )
+                    }
                 },
         ) {
             if (!uiState.hasMedia) {
@@ -130,6 +134,12 @@ fun MediaPreviewScreen(
                             viewModel::onPlaybackStateChanged else null,
                         playbackRequest = if (page == pagerState.currentPage) playbackRequest else null,
                         seekRequest = if (page == pagerState.currentPage) seekRequest else null,
+                        onTap = viewModel::toggleChrome,
+                        onZoomChanged = if (page == pagerState.currentPage) {
+                            { isMediaZoomed = it }
+                        } else {
+                            null
+                        },
                     )
                 }
             }
@@ -266,24 +276,107 @@ private fun SingleMediaView(
     onPlaybackChanged: ((Boolean, Long, Long) -> Unit)? = null,
     playbackRequest: Boolean? = null,
     seekRequest: Pair<Long, Int>? = null,
+    onTap: (() -> Unit)? = null,
+    onZoomChanged: ((Boolean) -> Unit)? = null,
 ) {
-    if (isVideo) {
-        VideoPlayerView(
-            path = path,
-            onPlaybackChanged = onPlaybackChanged,
-            playbackRequest = playbackRequest,
-            seekRequest = seekRequest,
-        )
-    } else {
-        AsyncImage(
-            model = path.toMediaModel(),
-            contentDescription = "Captura",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
-        )
+    ZoomableMedia(
+        key = path,
+        onTap = onTap,
+        onZoomChanged = onZoomChanged,
+    ) {
+        if (isVideo) {
+            VideoPlayerView(
+                path = path,
+                onPlaybackChanged = onPlaybackChanged,
+                playbackRequest = playbackRequest,
+                seekRequest = seekRequest,
+            )
+        } else {
+            AsyncImage(
+                model = path.toMediaModel(),
+                contentDescription = "Captura",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
+@Composable
+private fun ZoomableMedia(
+    key: String,
+    onTap: (() -> Unit)?,
+    onZoomChanged: ((Boolean) -> Unit)?,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    var scale by remember(key) { mutableFloatStateOf(1f) }
+    var offset by remember(key) { mutableStateOf(Offset.Zero) }
+    var containerSize by remember(key) { mutableStateOf(IntSize.Zero) }
+
+    fun clampOffset(candidate: Offset, targetScale: Float = scale): Offset {
+        if (targetScale <= 1f || containerSize == IntSize.Zero) return Offset.Zero
+        val maxX = (containerSize.width * (targetScale - 1f)) / 2f
+        val maxY = (containerSize.height * (targetScale - 1f)) / 2f
+        return Offset(
+            x = candidate.x.coerceIn(-maxX, maxX),
+            y = candidate.y.coerceIn(-maxY, maxY),
+        )
+    }
+
+    LaunchedEffect(scale) {
+        onZoomChanged?.invoke(scale > 1.01f)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { containerSize = it }
+            .pointerInput(key) {
+                detectTapGestures(
+                    onTap = { onTap?.invoke() },
+                    onDoubleTap = {
+                        if (scale > 1.01f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2.5f
+                        }
+                    },
+                )
+            }
+            .pointerInput(key, scale, containerSize) {
+                awaitEachGesture {
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressedCount = event.changes.count { it.pressed }
+                        val shouldHandleGesture = pressedCount > 1 || scale > 1.01f
+
+                        if (shouldHandleGesture) {
+                            val newScale = (scale * event.calculateZoom()).coerceIn(1f, 4f)
+                            val newOffset = if (newScale > 1.01f) {
+                                offset + event.calculatePan()
+                            } else {
+                                Offset.Zero
+                            }
+
+                            scale = newScale
+                            offset = clampOffset(newOffset, newScale)
+                            event.changes.forEach { change ->
+                                if (change.positionChanged()) change.consume()
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offset.x
+                translationY = offset.y
+            },
+        content = content,
+    )
+}
 @OptIn(UnstableApi::class)
 @Composable
 private fun VideoPlayerView(

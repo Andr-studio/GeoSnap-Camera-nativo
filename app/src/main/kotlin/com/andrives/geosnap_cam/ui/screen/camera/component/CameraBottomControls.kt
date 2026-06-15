@@ -100,11 +100,11 @@ fun CameraBottomControls(
             )
 
             // Switch camera button
-            AnimatedVisibility(
-                visible = !isRecording,
-                enter = fadeIn(),
-                exit = fadeOut(),
+            Box(
+                modifier = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center,
             ) {
+                if (!isRecording) {
                 CameraIconButton(
                     icon = Icons.Default.FlipCameraAndroid,
                     contentDescription = "Cambiar cámara",
@@ -112,8 +112,6 @@ fun CameraBottomControls(
                     modifier = Modifier.rotate(rotation),
                 )
             }
-            if (isRecording) {
-                Spacer(modifier = Modifier.size(48.dp))
             }
         }
     }
