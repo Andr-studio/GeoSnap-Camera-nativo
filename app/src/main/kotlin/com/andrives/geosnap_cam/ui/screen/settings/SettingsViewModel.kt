@@ -64,22 +64,34 @@ class SettingsViewModel @Inject constructor(
 
     private fun loadConfig() {
         viewModelScope.launch {
-            val config = settingsRepo.getConfig()
+            val config = normalizeConfig(settingsRepo.getConfig())
             _uiState.update { it.copy(config = config, isLoading = false) }
             prewarmAssets(config)
         }
     }
 
     fun updateConfig(newConfig: WatermarkConfig) {
-        _uiState.update { it.copy(config = newConfig) }
+        val normalizedConfig = normalizeConfig(newConfig)
+        _uiState.update { it.copy(config = normalizedConfig) }
         viewModelScope.launch {
             try {
-                settingsRepo.saveConfig(newConfig)
-                prewarmAssets(newConfig)
+                settingsRepo.saveConfig(normalizedConfig)
+                prewarmAssets(normalizedConfig)
             } catch (e: Exception) {
                 Log.e(TAG, "updateConfig failed: ${e.message}")
             }
         }
+    }
+
+    private fun normalizeConfig(config: WatermarkConfig): WatermarkConfig {
+        val textScale = config.textScale.coerceIn(0.4, 1.6)
+        return config.copy(
+            textScale = textScale,
+            titleScale = (textScale * WatermarkConfig.TITLE_TO_BODY_SCALE).coerceIn(0.4, 1.6),
+            glassWidth = WatermarkConfig.FIXED_GLASS_WIDTH,
+            mapAttributionScale = WatermarkConfig.FIXED_MAP_ATTRIBUTION_SCALE,
+            mapAttributionOutlineWidth = WatermarkConfig.FIXED_MAP_ATTRIBUTION_OUTLINE_WIDTH,
+        )
     }
 
     private suspend fun prewarmAssets(config: WatermarkConfig) {
@@ -98,6 +110,9 @@ class SettingsViewModel @Inject constructor(
         updateConfig(_uiState.value.config.copy(titleScale = value))
 
     fun setTextScale(value: Double) =
+        updateConfig(_uiState.value.config.copy(textScale = value))
+
+    fun setFontScale(value: Double) =
         updateConfig(_uiState.value.config.copy(textScale = value))
 
     fun setGlassWidth(value: Double) =

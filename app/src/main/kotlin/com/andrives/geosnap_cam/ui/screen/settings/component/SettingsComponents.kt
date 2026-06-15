@@ -3,21 +3,33 @@ package com.andrives.geosnap_cam.ui.screen.settings.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// ── Section wrapper (glass card) ─────────────────────────────────────────────
 
 @Composable
 fun SettingsSectionCard(
@@ -46,8 +58,6 @@ fun SettingsSectionCard(
     }
 }
 
-// ── Divider ──────────────────────────────────────────────────────────────────
-
 @Composable
 fun SettingsDivider() {
     HorizontalDivider(
@@ -56,8 +66,6 @@ fun SettingsDivider() {
         color = Color.White.copy(alpha = 0.1f),
     )
 }
-
-// ── Standard tile with icon + title + trailing ────────────────────────────────
 
 @Composable
 fun SettingTile(
@@ -74,7 +82,8 @@ fun SettingTile(
         .padding(horizontal = 16.dp, vertical = if (stackTrailing) 10.dp else 14.dp)
 
     @Composable
-    fun Header() = Row(
+    fun Header(modifier: Modifier = Modifier) = Row(
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -87,19 +96,27 @@ fun SettingTile(
         }
     }
 
-    if (stackTrailing) Column(
-        modifier = contentModifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Header()
-        trailing?.invoke()
-    } else Row(
-        modifier = contentModifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Header()
-        trailing?.invoke()
+    if (stackTrailing) {
+        Column(modifier = contentModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Header()
+            trailing?.invoke()
+        }
+    } else {
+        Row(
+            modifier = contentModifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Header(Modifier.weight(1f))
+            trailing?.let {
+                Box(
+                    modifier = Modifier.widthIn(min = 46.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    it()
+                }
+            }
+        }
     }
 }
 
@@ -115,8 +132,6 @@ private fun SettingIcon(icon: ImageVector) {
         Icon(icon, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(17.dp))
     }
 }
-
-// ── Slider tile ───────────────────────────────────────────────────────────────
 
 @Composable
 fun SliderSettingTile(
@@ -139,19 +154,10 @@ fun SliderSettingTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF007AFF).copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(17.dp))
-            }
+            SettingIcon(icon)
             Text(title, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
             Text(valueLabel, color = Color(0xFF007AFF), fontSize = 13.sp, fontWeight = FontWeight.Medium)
         }
-
         Slider(
             value = value,
             onValueChange = onChanged,
@@ -167,8 +173,6 @@ fun SliderSettingTile(
     }
 }
 
-// ── Toggle tile ───────────────────────────────────────────────────────────────
-
 @Composable
 fun ToggleSettingTile(
     icon: ImageVector,
@@ -183,6 +187,7 @@ fun ToggleSettingTile(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                modifier = Modifier.scale(0.9f),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
                     checkedTrackColor = Color(0xFF34C759),
@@ -190,110 +195,6 @@ fun ToggleSettingTile(
                     uncheckedTrackColor = Color.White.copy(alpha = 0.3f),
                 ),
             )
-        }
+        },
     )
-}
-
-// ── Color picker tile ─────────────────────────────────────────────────────────
-
-@Composable
-fun ColorPickerTile(
-    icon: ImageVector,
-    title: String,
-    selectedArgb: Int,
-    onSelected: (Int) -> Unit,
-    colors: List<Int>,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF007AFF).copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(17.dp))
-            }
-            Text(title, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            colors.forEach { argb ->
-                val isSelected = argb == selectedArgb
-                val composeColor = if (argb == 0) Color.Transparent else Color(argb)
-
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (argb == 0) Color.Transparent else composeColor
-                        )
-                        .then(
-                            if (argb == 0) Modifier.border(2.dp, Color.White.copy(alpha = 0.4f), CircleShape)
-                            else Modifier
-                        )
-                        .then(
-                            if (isSelected) Modifier.border(3.dp, Color(0xFF007AFF), CircleShape)
-                            else Modifier
-                        )
-                        .clickable { onSelected(argb) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (argb == 0) {
-                        // Multi-color option
-                        Text("G", color = Color(0xFF4285F4), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Segmented control ─────────────────────────────────────────────────────────
-
-@Composable
-fun <T> SegmentedControl(
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(alpha = 0.08f))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        options.forEach { (value, label) ->
-            val isSelected = value == selected
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSelected) Color(0xFF007AFF) else Color.Transparent)
-                    .clickable { onSelect(value) }
-                    .padding(vertical = 7.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f),
-                    fontSize = 12.sp,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                )
-            }
-        }
-    }
 }

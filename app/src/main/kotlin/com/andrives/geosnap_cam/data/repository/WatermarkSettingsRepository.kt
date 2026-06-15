@@ -35,21 +35,18 @@ class WatermarkSettingsRepository @Inject constructor(
             mapType = WatermarkMapType.fromKey(
                 prefs.getString("wm_mapType", null) ?: WatermarkMapType.STANDARD.key
             ),
-            titleScale = prefs.getFloat("wm_titleScale", 0.55f).toDouble()
-                .coerceIn(0.4, 1.6),
             textScale = prefs.getFloat("wm_textScale", 0.65f).toDouble()
                 .coerceIn(0.4, 1.6),
+            titleScale = (prefs.getFloat("wm_textScale", 0.65f).toDouble() *
+                WatermarkConfig.TITLE_TO_BODY_SCALE).coerceIn(0.4, 1.6),
             glassOpacity = prefs.getFloat("wm_glassOpacity", 0.55f).toDouble()
                 .coerceIn(0.0, 1.0),
-            glassWidth = prefs.getFloat("wm_glassWidth", 1.0f).toDouble()
-                .coerceIn(0.5, 1.0),
+            glassWidth = WatermarkConfig.FIXED_GLASS_WIDTH,
             titleColorValue = prefs.getInt("wm_titleColorValue", 0xFFFFFFFF.toInt()),
             textColorValue = prefs.getInt("wm_textColorValue", 0xFFFFFFFF.toInt()),
             glassColorValue = prefs.getInt("wm_glassColorValue", 0xFF070707.toInt()),
-            mapAttributionScale = prefs.getFloat("wm_mapAttributionScale", 1.0f).toDouble()
-                .coerceIn(0.7, 2.2),
-            mapAttributionOutlineWidth = prefs.getFloat("wm_mapAttributionOutlineWidth", 1.2f).toDouble()
-                .coerceIn(0.0, 4.0),
+            mapAttributionScale = WatermarkConfig.FIXED_MAP_ATTRIBUTION_SCALE,
+            mapAttributionOutlineWidth = WatermarkConfig.FIXED_MAP_ATTRIBUTION_OUTLINE_WIDTH,
             mapAttributionColorValue = prefs.getInt("wm_mapAttributionColorValue", 0xFFFFFFFF.toInt()),
         )
         _configFlow.value = config
@@ -67,12 +64,12 @@ class WatermarkSettingsRepository @Inject constructor(
             putFloat("wm_titleScale", config.titleScale.toFloat())
             putFloat("wm_textScale", config.textScale.toFloat())
             putFloat("wm_glassOpacity", config.glassOpacity.toFloat())
-            putFloat("wm_glassWidth", config.glassWidth.toFloat())
+            putFloat("wm_glassWidth", WatermarkConfig.FIXED_GLASS_WIDTH.toFloat())
             putInt("wm_titleColorValue", config.titleColorValue)
             putInt("wm_textColorValue", config.textColorValue)
             putInt("wm_glassColorValue", config.glassColorValue)
-            putFloat("wm_mapAttributionScale", config.mapAttributionScale.toFloat())
-            putFloat("wm_mapAttributionOutlineWidth", config.mapAttributionOutlineWidth.toFloat())
+            putFloat("wm_mapAttributionScale", WatermarkConfig.FIXED_MAP_ATTRIBUTION_SCALE.toFloat())
+            putFloat("wm_mapAttributionOutlineWidth", WatermarkConfig.FIXED_MAP_ATTRIBUTION_OUTLINE_WIDTH.toFloat())
             putInt("wm_mapAttributionColorValue", config.mapAttributionColorValue)
             apply()
         }
