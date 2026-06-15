@@ -33,7 +33,10 @@ data class PreviewUiState(
     val showDeleteDialog: Boolean = false,
     val dragY: Float = 0f,
     val dragScale: Float = 1f,
-)
+) {
+    val hasMedia: Boolean
+        get() = sessionPaths.isNotEmpty()
+}
 
 @HiltViewModel
 class PreviewViewModel @Inject constructor(
@@ -161,13 +164,53 @@ class PreviewViewModel @Inject constructor(
 
     fun deleteCurrentFile(): Boolean {
         return try {
-            val path = _uiState.value.currentPath
+            val state = _uiState.value
+            val path = state.currentPath
+            if (path.isBlank()) return false
+
             if (path.startsWith("content://")) {
                 context.contentResolver.delete(Uri.parse(path), null, null) > 0
             } else {
                 File(path).delete()
             }
-            _uiState.update { it.copy(showDeleteDialog = false) }
+
+            val newPaths = state.sessionPaths.toMutableList()
+            val newVideos = state.sessionIsVideo.toMutableList()
+            val removeIndex = state.activeIndex.coerceIn(0, (newPaths.size - 1).coerceAtLeast(0))
+            if (removeIndex in newPaths.indices) {
+                newPaths.removeAt(removeIndex)
+                if (removeIndex in newVideos.indices) newVideos.removeAt(removeIndex)
+            }
+
+            val nextIndex = removeIndex.coerceAtMost((newPaths.size - 1).coerceAtLeast(0))
+            _uiState.update {
+                if (newPaths.isEmpty()) {
+                    it.copy(
+                        currentPath = "",
+                        currentIsVideo = false,
+                        activeIndex = 0,
+                        sessionPaths = emptyList(),
+                        sessionIsVideo = emptyList(),
+                        isPlaying = false,
+                        videoPositionMs = 0L,
+                        videoDurationMs = 0L,
+                        showDeleteDialog = false,
+                        chromeVisible = true,
+                    )
+                } else {
+                    it.copy(
+                        currentPath = newPaths[nextIndex],
+                        currentIsVideo = newVideos.getOrElse(nextIndex) { false },
+                        activeIndex = nextIndex,
+                        sessionPaths = newPaths,
+                        sessionIsVideo = newVideos,
+                        isPlaying = false,
+                        videoPositionMs = 0L,
+                        videoDurationMs = 0L,
+                        showDeleteDialog = false,
+                    )
+                }
+            }
             true
         } catch (e: Exception) {
             Log.e(TAG, "deleteCurrentFile failed: ${e.message}")

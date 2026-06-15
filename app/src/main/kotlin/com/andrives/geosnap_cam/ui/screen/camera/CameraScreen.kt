@@ -213,12 +213,13 @@ fun CameraScreen(
                         else -> viewModel.startRecording()
                     }
                 },
-                onSwitchCamera = viewModel::switchCamera,
-                onGalleryTap = {
-                    val path = uiState.lastCapturedPath ?: return@CameraBottomControls
-                    onNavigateToPreview(
-                        path,
-                        uiState.lastCapturedIsVideo,
+            onSwitchCamera = viewModel::switchCamera,
+            onGalleryTap = {
+                val path = uiState.lastCapturedPath ?: return@CameraBottomControls
+                if (!File(path).exists()) return@CameraBottomControls
+                onNavigateToPreview(
+                    path,
+                    uiState.lastCapturedIsVideo,
                         uiState.sessionPaths,
                         uiState.sessionIsVideo,
                     )

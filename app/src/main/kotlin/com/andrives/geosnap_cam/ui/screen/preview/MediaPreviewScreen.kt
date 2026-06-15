@@ -114,14 +114,8 @@ fun MediaPreviewScreen(
                     )
                 },
         ) {
-            if (uiState.sessionPaths.isEmpty()) {
-                SingleMediaView(
-                    path = initialPath,
-                    isVideo = initialIsVideo,
-                    onPlaybackChanged = viewModel::onPlaybackStateChanged,
-                    playbackRequest = playbackRequest,
-                    seekRequest = seekRequest,
-                )
+            if (!uiState.hasMedia) {
+                EmptyMediaState()
             } else {
                 HorizontalPager(
                     state = pagerState,
@@ -143,7 +137,7 @@ fun MediaPreviewScreen(
 
         // ── Top bar ───────────────────────────────────────────────────────
         AnimatedVisibility(
-            visible = uiState.chromeVisible,
+            visible = uiState.chromeVisible && uiState.hasMedia,
             enter = fadeIn() + slideInVertically { -it },
             exit = fadeOut() + slideOutVertically { -it },
             modifier = Modifier
@@ -202,8 +196,7 @@ fun MediaPreviewScreen(
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            val deleted = viewModel.deleteCurrentFile()
-                            if (deleted) onBack()
+                            viewModel.deleteCurrentFile()
                         },
                     ) {
                         Text("Eliminar", color = MaterialTheme.colorScheme.error)
@@ -223,6 +216,47 @@ fun MediaPreviewScreen(
 }
 
 // ── Single media view (photo or video) ───────────────────────────────────────
+
+@Composable
+private fun EmptyMediaState() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(76.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.PhotoLibrary,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(34.dp),
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            text = "Aún no has capturado fotos ni videos",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Tus capturas aparecerán aquí después de tomar una foto o grabar un video.",
+            color = Color.White.copy(alpha = 0.62f),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
+}
 
 @OptIn(UnstableApi::class)
 @Composable

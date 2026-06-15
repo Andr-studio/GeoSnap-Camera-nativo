@@ -1,7 +1,10 @@
 package com.andrives.geosnap_cam.ui.screen.camera.component
 
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -18,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -25,6 +29,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.andrives.geosnap_cam.ui.screen.camera.CameraMode
 import com.andrives.geosnap_cam.ui.screen.camera.ProcessingState
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Bottom control bar with mode selector, shutter button, gallery thumbnail, and camera switch.
@@ -215,6 +222,7 @@ private fun GalleryThumbnail(
     rotationDegrees: Float,
     onClick: () -> Unit,
 ) {
+    val existingPath = remember(path) { path?.takeIf { File(it).exists() } }
     Box(
         modifier = Modifier
             .size(52.dp)
@@ -230,14 +238,23 @@ private fun GalleryThumbnail(
                 color = Color.White,
                 strokeWidth = 2.dp,
             )
-        } else if (path != null) {
+        } else if (existingPath != null) {
             AsyncImage(
-                model = path,
+                model = existingPath,
                 contentDescription = "Última captura",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
             if (isVideo) {
+                val thumbnail by rememberVideoThumbnail(existingPath)
+                if (thumbnail != null) {
+                    Image(
+                        bitmap = thumbnail!!.asImageBitmap(),
+                        contentDescription = "Último video",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 Icon(
                     Icons.Default.PlayCircle,
                     contentDescription = null,
@@ -247,6 +264,22 @@ private fun GalleryThumbnail(
             }
         } else {
             Icon(Icons.Default.Photo, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+        }
+    }
+}
+
+@Composable
+private fun rememberVideoThumbnail(path: String): State<Bitmap?> {
+    return produceState<Bitmap?>(initialValue = null, key1 = path) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                MediaMetadataRetriever().use { retriever ->
+                    retriever.setDataSource(path)
+                    retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                }
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 }

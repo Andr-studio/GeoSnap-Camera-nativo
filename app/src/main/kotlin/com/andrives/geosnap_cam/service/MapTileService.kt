@@ -33,6 +33,7 @@ class MapTileService @Inject constructor(
     }
 
     private val mapCache = LinkedHashMap<String, Bitmap>(16, 0.75f, true)
+    private val lastMapByType = mutableMapOf<String, Bitmap>()
 
     /**
      * Returns a cached map image if available.
@@ -46,6 +47,12 @@ class MapTileService @Inject constructor(
         return mapCache[cacheKey(mapType, tile)]
     }
 
+    fun getLastCachedMapImage(mapType: WatermarkMapType): Bitmap? {
+        return synchronized(mapCache) {
+            lastMapByType[mapType.key]
+        }
+    }
+
     /**
      * Returns a cached map image or fetches a new one.
      */
@@ -57,16 +64,26 @@ class MapTileService @Inject constructor(
         val tile = latLonToTileLocation(latitude, longitude, MAP_ZOOM)
         val key = cacheKey(mapType, tile)
 
-        mapCache[key]?.let { return@withContext it }
+        synchronized(mapCache) {
+            mapCache[key]?.let {
+                lastMapByType[mapType.key] = it
+                return@withContext it
+            }
+        }
 
         try {
             val image = buildCenteredMapImage(mapType, tile) ?: return@withContext null
             synchronized(mapCache) {
                 mapCache[key] = image
+                lastMapByType[mapType.key] = image
                 // Evict oldest if cache too large
                 if (mapCache.size > 60) {
                     val oldest = mapCache.keys.first()
-                    mapCache.remove(oldest)?.recycle()
+                    val evicted = mapCache.remove(oldest)
+                    val isLastMapFallback = lastMapByType.values.any { it == evicted }
+                    if (!isLastMapFallback) {
+                        evicted?.recycle()
+                    }
                 }
             }
             image

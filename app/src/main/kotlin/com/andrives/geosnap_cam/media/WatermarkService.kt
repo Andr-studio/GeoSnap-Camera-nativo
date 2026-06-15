@@ -138,8 +138,9 @@ class WatermarkService @Inject constructor(
                 // Cache miss due to GPS drift. Trigger async fetch and reuse last valid map.
                 kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
                     mapTileService.getOrFetchMapImage(location.latitude, location.longitude, config.mapType)
+                        ?.let { lastValidMapImage = it }
                 }
-                mapImage = lastValidMapImage
+                mapImage = lastValidMapImage ?: mapTileService.getLastCachedMapImage(config.mapType)
             } else {
                 lastValidMapImage = mapImage
             }
@@ -179,7 +180,7 @@ class WatermarkService @Inject constructor(
      */
     suspend fun prewarmWatermarkAssets(location: LocationData?, config: WatermarkConfig) {
         if (location == null) return
-        mapTileService.getOrFetchMapImage(
+        lastValidMapImage = mapTileService.getOrFetchMapImage(
             location.latitude, location.longitude, config.mapType
         )
     }
@@ -205,6 +206,9 @@ class WatermarkService @Inject constructor(
         val mapImage = mapTileService.getOrFetchMapImage(
             location.latitude, location.longitude, config.mapType
         )
+        if (mapImage != null) {
+            lastValidMapImage = mapImage
+        }
 
         val canvasW = CANVAS_WIDTH * config.effectiveGlassWidth.toFloat()
 
