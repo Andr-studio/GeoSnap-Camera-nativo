@@ -1,13 +1,11 @@
 package com.andrives.geosnap_cam.ui.screen.permission
 
-import android.Manifest
-import android.os.Build
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -23,7 +20,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import com.andrives.geosnap_cam.service.PermissionManager
 import com.google.accompanist.permissions.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+
+@HiltViewModel
+class PermissionViewModel @Inject constructor(
+    private val permissionManager: PermissionManager,
+) : ViewModel() {
+    val requiredPermissions: List<String> = permissionManager.getRequiredPermissions()
+
+    fun markOnboardingComplete() {
+        permissionManager.setOnboardingComplete()
+    }
+}
 
 /**
  * Permission onboarding screen requesting Camera, Microphone, Location, and Storage.
@@ -32,20 +45,13 @@ import com.google.accompanist.permissions.*
 @Composable
 fun PermissionScreen(
     onPermissionsGranted: () -> Unit,
+    viewModel: PermissionViewModel = hiltViewModel(),
 ) {
-    val permissions = buildList {
-        add(Manifest.permission.CAMERA)
-        add(Manifest.permission.RECORD_AUDIO)
-        add(Manifest.permission.ACCESS_FINE_LOCATION)
-        if (Build.VERSION.SDK_INT <= 28) {
-            add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-    }
-
-    val multiplePermissionsState = rememberMultiplePermissionsState(permissions)
+    val multiplePermissionsState = rememberMultiplePermissionsState(viewModel.requiredPermissions)
 
     LaunchedEffect(multiplePermissionsState.allPermissionsGranted) {
         if (multiplePermissionsState.allPermissionsGranted) {
+            viewModel.markOnboardingComplete()
             onPermissionsGranted()
         }
     }
@@ -60,10 +66,14 @@ fun PermissionScreen(
             ),
         contentAlignment = Alignment.Center,
     ) {
+        val scrollState = rememberScrollState()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(32.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 32.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {

@@ -59,12 +59,20 @@ fun CameraScreen(
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var imageAnalysis by remember { mutableStateOf<androidx.camera.core.ImageAnalysis?>(null) }
     var exposureRatio by remember { mutableFloatStateOf(0.5f) }
+    var isCameraVisible by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
 
     DisposableEffect(Unit) {
         val window = (context as? android.app.Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
     }
     LaunchedEffect(Unit) {
         if (!cameraPermission.status.isGranted) cameraPermission.launchPermissionRequest()
@@ -75,7 +83,21 @@ fun CameraScreen(
     }
     DisposableEffect(lifecycleOwner.lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.reloadSettings()
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    isCameraVisible = true
+                    viewModel.reloadSettings()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    isCameraVisible = false
+                    camera?.cameraControl?.enableTorch(false)
+                    camera = null
+                    imageCapture = null
+                    imageAnalysis = null
+                    viewModel.onCameraBackgrounded()
+                }
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -93,12 +115,17 @@ fun CameraScreen(
         }
     }
 
+    LaunchedEffect(uiState.targetRotation) {
+        imageCapture?.targetRotation = uiState.targetRotation
+        imageAnalysis?.targetRotation = uiState.targetRotation
+    }
+
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        if (cameraPermission.status.isGranted) {
+        if (cameraPermission.status.isGranted && isCameraVisible) {
             CameraPreview(
                 lensFacing = uiState.lensFacing,
                 flashMode = uiState.flashMode,
@@ -107,6 +134,7 @@ fun CameraScreen(
                 onCameraReady = { activeCamera, capture, analysis ->
                     camera = activeCamera
                     imageCapture = capture
+                    imageAnalysis = analysis
                     analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { proxy ->
                         viewModel.processFrame(proxy)
                     }
@@ -133,71 +161,79 @@ fun CameraScreen(
             )
         }
 
-        FocusExposureOverlay(
-            visible = uiState.showFocusRing,
-            isLocked = uiState.isFocusLocked,
-            isActive = uiState.isFocusIndicatorActive,
-            x = uiState.focusX,
-            y = uiState.focusY,
-            exposureRatio = exposureRatio,
-            onExposureChange = { exposureRatio = it },
-            onInteraction = viewModel::onFocusIndicatorInteraction,
-            modifier = Modifier.fillMaxSize(),
-        )
+        if (isCameraVisible) {
+            FocusExposureOverlay(
+                visible = uiState.showFocusRing,
+                isLocked = uiState.isFocusLocked,
+                isActive = uiState.isFocusIndicatorActive,
+                x = uiState.focusX,
+                y = uiState.focusY,
+                exposureRatio = exposureRatio,
+                onExposureChange = { exposureRatio = it },
+                onInteraction = viewModel::onFocusIndicatorInteraction,
+                modifier = Modifier.fillMaxSize(),
+            )
 
-        CameraTopBar(
-            location = uiState.location,
-            gpsReady = uiState.gpsReady,
-            flashMode = uiState.flashMode,
-            mode = uiState.mode,
-            isFlashMenuOpen = uiState.isFlashMenuOpen,
-            isRecording = uiState.isRecording,
-            iconRotationDegrees = uiState.iconRotationDegrees,
-            onFlashTap = viewModel::toggleFlashMenu,
-            onFlashSelect = viewModel::setFlashMode,
-            onSettingsTap = {
-                viewModel.closeFlashMenu()
-                onNavigateToSettings()
-            },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding(),
-        )
+            CameraTopBar(
+                location = uiState.location,
+                gpsReady = uiState.gpsReady,
+                flashMode = uiState.flashMode,
+                mode = uiState.mode,
+                isFlashMenuOpen = uiState.isFlashMenuOpen,
+                isRecording = uiState.isRecording,
+                iconRotationDegrees = uiState.iconRotationDegrees,
+                onFlashTap = viewModel::toggleFlashMenu,
+                onFlashSelect = viewModel::setFlashMode,
+                onSettingsTap = {
+                    viewModel.closeFlashMenu()
+                    onNavigateToSettings()
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding(),
+            )
 
-        CameraBottomControls(
-            mode = uiState.mode,
-            processingState = uiState.processingState,
-            isRecording = uiState.isRecording,
-            recordingSeconds = uiState.recordingSeconds,
-            lastCapturedPath = uiState.lastCapturedPath,
-            lastCapturedIsVideo = uiState.lastCapturedIsVideo,
-            iconRotationDegrees = uiState.iconRotationDegrees,
-            onModeTap = viewModel::setMode,
-            onShutterTap = {
-                when {
-                    uiState.mode == CameraMode.PHOTO -> capturePhoto(
-                        context,
-                        imageCapture,
-                        viewModel,
+            CameraBottomControls(
+                mode = uiState.mode,
+                processingState = uiState.processingState,
+                isRecording = uiState.isRecording,
+                recordingSeconds = uiState.recordingSeconds,
+                lastCapturedPath = uiState.lastCapturedPath,
+                lastCapturedIsVideo = uiState.lastCapturedIsVideo,
+                iconRotationDegrees = uiState.iconRotationDegrees,
+                onModeTap = viewModel::setMode,
+                onShutterTap = {
+                    when {
+                        uiState.mode == CameraMode.PHOTO -> capturePhoto(
+                            context,
+                            imageCapture,
+                            viewModel,
+                        )
+                        uiState.isRecording -> viewModel.stopRecording()
+                        else -> viewModel.startRecording()
+                    }
+                },
+                onSwitchCamera = viewModel::switchCamera,
+                onGalleryTap = {
+                    val path = uiState.lastCapturedPath ?: return@CameraBottomControls
+                    onNavigateToPreview(
+                        path,
+                        uiState.lastCapturedIsVideo,
+                        uiState.sessionPaths,
+                        uiState.sessionIsVideo,
                     )
-                    uiState.isRecording -> viewModel.stopRecording()
-                    else -> viewModel.startRecording()
-                }
-            },
-            onSwitchCamera = viewModel::switchCamera,
-            onGalleryTap = {
-                val path = uiState.lastCapturedPath ?: return@CameraBottomControls
-                onNavigateToPreview(
-                    path,
-                    uiState.lastCapturedIsVideo,
-                    uiState.sessionPaths,
-                    uiState.sessionIsVideo,
-                )
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding(),
-        )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+            )
+        }
     }
 }
 

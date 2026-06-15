@@ -74,6 +74,7 @@ data class CameraUiState(
     val gpsReady: Boolean = false,
     val isSwitchingCamera: Boolean = false,
     val iconRotationDegrees: Float = 0f,
+    val targetRotation: Int = android.view.Surface.ROTATION_0,
 )
 
 @HiltViewModel
@@ -137,6 +138,14 @@ class CameraViewModel @Inject constructor(
     }
 
     fun reloadSettings() = loadSettings()
+
+    fun onCameraBackgrounded() {
+        closeFlashMenu()
+        resetFocus()
+        if (_uiState.value.isRecording) {
+            stopRecording()
+        }
+    }
 
     private fun loadRecentSession() {
         viewModelScope.launch {
@@ -352,7 +361,7 @@ class CameraViewModel @Inject constructor(
                 val location = _uiState.value.location
                 if (location == null) {
                     Log.w(TAG, "No GPS location — saving photo without watermark")
-                    addToSession(rawPath, false)
+                    addToSession(saveRawPhotoFallback(rawPath), false)
                     _uiState.update { it.copy(processingState = ProcessingState.DONE) }
                     return@launch
                 }
@@ -368,12 +377,11 @@ class CameraViewModel @Inject constructor(
                     vibrateCapture()
                 } else {
                     // Fallback: save raw photo
-                    val savedUri = mediaSaver.saveToGallery(rawPath, false)
-                    addToSession(rawPath, false)
+                    addToSession(saveRawPhotoFallback(rawPath), false)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "onPhotoCaptured failed: ${e.message}", e)
-                addToSession(rawPath, false)
+                addToSession(saveRawPhotoFallback(rawPath), false)
             } finally {
                 _uiState.update { it.copy(processingState = ProcessingState.IDLE) }
             }
@@ -455,7 +463,19 @@ class CameraViewModel @Inject constructor(
                     accumulatedRotation -= diff
                     lastSnappedOrientation = snapped
 
-                    _uiState.update { it.copy(iconRotationDegrees = accumulatedRotation) }
+                    val surfaceRot = when (snapped) {
+                        90 -> android.view.Surface.ROTATION_270
+                        180 -> android.view.Surface.ROTATION_180
+                        270 -> android.view.Surface.ROTATION_90
+                        else -> android.view.Surface.ROTATION_0
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            iconRotationDegrees = accumulatedRotation,
+                            targetRotation = surfaceRot
+                        )
+                    }
                 }
             }
         }
@@ -495,6 +515,18 @@ class CameraViewModel @Inject constructor(
     }
 
     // ── File paths ────────────────────────────────────────────────────────────
+
+    private suspend fun saveRawPhotoFallback(rawPath: String): String {
+        val outputPath = generateOutputPath(isVideo = false)
+        return try {
+            File(rawPath).copyTo(File(outputPath), overwrite = true)
+            mediaSaver.saveToGallery(outputPath, false)
+            outputPath
+        } catch (e: Exception) {
+            Log.e(TAG, "saveRawPhotoFallback failed: ${e.message}", e)
+            rawPath
+        }
+    }
 
     private fun generateOutputPath(isVideo: Boolean): String {
         val ext = if (isVideo) ".mp4" else ".jpg"

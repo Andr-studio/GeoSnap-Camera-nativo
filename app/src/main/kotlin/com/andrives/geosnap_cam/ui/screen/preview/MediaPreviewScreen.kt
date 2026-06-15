@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -52,7 +55,9 @@ fun MediaPreviewScreen(
     viewModel: PreviewViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    var playbackRequest by remember { mutableStateOf<Boolean?>(null) }
+    var seekRequest by remember { mutableStateOf<Pair<Long, Int>?>(null) }
+    var seekRequestCount by remember { mutableIntStateOf(0) }
 
     // Initialize ViewModel on first composition
     LaunchedEffect(initialPath) {
@@ -60,13 +65,21 @@ fun MediaPreviewScreen(
     }
 
     val pagerState = rememberPagerState(
-        initialPage = uiState.activeIndex.coerceAtLeast(0),
-        pageCount = { sessionPaths.size.coerceAtLeast(1) },
+        initialPage = 0,
+        pageCount = { uiState.sessionPaths.size.coerceAtLeast(1) },
     )
+
+    LaunchedEffect(uiState.activeIndex, uiState.sessionPaths.size) {
+        if (uiState.sessionPaths.isNotEmpty() && pagerState.currentPage != uiState.activeIndex) {
+            pagerState.scrollToPage(uiState.activeIndex)
+        }
+    }
 
     // Sync pager page with ViewModel
     LaunchedEffect(pagerState.currentPage) {
         viewModel.onPageChanged(pagerState.currentPage)
+        playbackRequest = null
+        seekRequest = null
     }
 
     // Background fades with drag
@@ -101,24 +114,28 @@ fun MediaPreviewScreen(
                     )
                 },
         ) {
-            if (sessionPaths.isEmpty()) {
+            if (uiState.sessionPaths.isEmpty()) {
                 SingleMediaView(
                     path = initialPath,
                     isVideo = initialIsVideo,
                     onPlaybackChanged = viewModel::onPlaybackStateChanged,
+                    playbackRequest = playbackRequest,
+                    seekRequest = seekRequest,
                 )
             } else {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
-                    val path = sessionPaths.getOrElse(page) { initialPath }
-                    val isVideo = sessionIsVideo.getOrElse(page) { false }
+                    val path = uiState.sessionPaths.getOrElse(page) { initialPath }
+                    val isVideo = uiState.sessionIsVideo.getOrElse(page) { false }
                     SingleMediaView(
                         path = path,
                         isVideo = isVideo && page == pagerState.currentPage,
                         onPlaybackChanged = if (page == pagerState.currentPage)
                             viewModel::onPlaybackStateChanged else null,
+                        playbackRequest = if (page == pagerState.currentPage) playbackRequest else null,
+                        seekRequest = if (page == pagerState.currentPage) seekRequest else null,
                     )
                 }
             }
@@ -159,13 +176,13 @@ fun MediaPreviewScreen(
                 onShare = viewModel::shareCurrentFile,
                 onDelete = viewModel::showDeleteDialog,
                 onTogglePlay = {
-                    // Toggle is handled by ExoPlayer inside SingleMediaView
-                    // We just request the toggle via state
-                    viewModel.onPlaybackStateChanged(
-                        !uiState.isPlaying, uiState.videoPositionMs, uiState.videoDurationMs
-                    )
+                    playbackRequest = !uiState.isPlaying
                 },
-                onSeek = { ms -> viewModel.onSeekRequest(ms) },
+                onSeek = { ms ->
+                    seekRequestCount += 1
+                    seekRequest = ms to seekRequestCount
+                    viewModel.onSeekRequest(ms)
+                },
             )
         }
 
@@ -213,12 +230,19 @@ private fun SingleMediaView(
     path: String,
     isVideo: Boolean,
     onPlaybackChanged: ((Boolean, Long, Long) -> Unit)? = null,
+    playbackRequest: Boolean? = null,
+    seekRequest: Pair<Long, Int>? = null,
 ) {
     if (isVideo) {
-        VideoPlayerView(path = path, onPlaybackChanged = onPlaybackChanged)
+        VideoPlayerView(
+            path = path,
+            onPlaybackChanged = onPlaybackChanged,
+            playbackRequest = playbackRequest,
+            seekRequest = seekRequest,
+        )
     } else {
         AsyncImage(
-            model = File(path),
+            model = path.toMediaModel(),
             contentDescription = "Captura",
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
@@ -231,20 +255,39 @@ private fun SingleMediaView(
 private fun VideoPlayerView(
     path: String,
     onPlaybackChanged: ((Boolean, Long, Long) -> Unit)?,
+    playbackRequest: Boolean?,
+    seekRequest: Pair<Long, Int>?,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val exoPlayer = remember(path) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
+            setMediaItem(MediaItem.fromUri(path.toMediaUri()))
             repeatMode = Player.REPEAT_MODE_ONE
             prepare()
             playWhenReady = true
         }
     }
 
-    // Report playback state back to ViewModel
+    LaunchedEffect(playbackRequest) {
+        playbackRequest?.let { shouldPlay ->
+            if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+        }
+    }
+
+    LaunchedEffect(seekRequest) {
+        seekRequest?.let { (positionMs, _) ->
+            exoPlayer.seekTo(positionMs)
+            onPlaybackChanged?.invoke(
+                exoPlayer.isPlaying,
+                positionMs,
+                exoPlayer.duration.coerceAtLeast(0L),
+            )
+        }
+    }
+
     LaunchedEffect(exoPlayer) {
-        exoPlayer.addListener(object : Player.Listener {
+        val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onPlaybackChanged?.invoke(
                     isPlaying,
@@ -252,7 +295,35 @@ private fun VideoPlayerView(
                     exoPlayer.duration.coerceAtLeast(0L),
                 )
             }
-        })
+        }
+        exoPlayer.addListener(listener)
+        try {
+            while (true) {
+                onPlaybackChanged?.invoke(
+                    exoPlayer.isPlaying,
+                    exoPlayer.currentPosition,
+                    exoPlayer.duration.coerceAtLeast(0L),
+                )
+                kotlinx.coroutines.delay(250)
+            }
+        } finally {
+            exoPlayer.removeListener(listener)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner.lifecycle, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                exoPlayer.pause()
+                onPlaybackChanged?.invoke(
+                    false,
+                    exoPlayer.currentPosition,
+                    exoPlayer.duration.coerceAtLeast(0L),
+                )
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     DisposableEffect(path) {
@@ -403,4 +474,12 @@ private fun formatMs(ms: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%02d:%02d".format(minutes, seconds)
+}
+
+private fun String.toMediaUri(): Uri {
+    return if (startsWith("content://")) Uri.parse(this) else Uri.fromFile(File(this))
+}
+
+private fun String.toMediaModel(): Any {
+    return if (startsWith("content://")) Uri.parse(this) else File(this)
 }

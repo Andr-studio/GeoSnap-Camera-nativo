@@ -65,7 +65,8 @@ object PhotoWatermarkProcessor {
 
             // Calculate watermark overlay size and position
             val widthFactor = config.effectiveGlassWidth.coerceIn(0.32, 0.96)
-            val targetWidth = (rotatedBitmap.width * widthFactor).toInt()
+            val safeBaseWidth = kotlin.math.min(rotatedBitmap.width, rotatedBitmap.height)
+            val targetWidth = (safeBaseWidth * widthFactor).toInt()
             val targetHeight = (targetWidth.toDouble() * watermarkBitmap.height / watermarkBitmap.width).toInt()
             val safeWidth = targetWidth.coerceIn(1, rotatedBitmap.width)
             val safeHeight = targetHeight.coerceIn(1, rotatedBitmap.height)

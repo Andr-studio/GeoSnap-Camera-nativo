@@ -50,6 +50,7 @@ class GeoSnapVideoMuxer(
 
     private var audioThread: Thread? = null
     private var outputFilePath = ""
+    private var lockedRotation = -1
     
     private var nv12Buffer: ByteArray? = null
 
@@ -100,6 +101,7 @@ class GeoSnapVideoMuxer(
         videoFormatSet = false
         audioFormatSet = false
         startTimeNs = System.nanoTime()
+        lockedRotation = -1
 
         isRecordingStatus.set(true)
         
@@ -179,7 +181,10 @@ class GeoSnapVideoMuxer(
     ) {
         if (!isRecordingStatus.get()) { proxy.close(); return }
         try {
-            val rot = proxy.imageInfo.rotationDegrees
+            if (lockedRotation == -1) {
+                lockedRotation = proxy.imageInfo.rotationDegrees
+            }
+            val rot = lockedRotation
             
             val frameW = proxy.width
             val frameH = proxy.height

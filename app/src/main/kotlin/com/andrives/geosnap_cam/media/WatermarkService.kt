@@ -154,7 +154,8 @@ class WatermarkService @Inject constructor(
             )
             val measuredSize = WatermarkRenderer.measureSize(location, config, Date(), canvasW)
             val widthFactor = config.effectiveGlassWidth.coerceIn(0.32, 0.96).toFloat()
-            val targetWidth = videoWidth * widthFactor
+            val safeBaseWidth = kotlin.math.min(videoWidth, videoHeight)
+            val targetWidth = safeBaseWidth * widthFactor
             val scale = (targetWidth / measuredSize.width).coerceAtLeast(0.5f)
             
             lastOverlayBitmap = renderer.renderToBitmap(scale = scale)

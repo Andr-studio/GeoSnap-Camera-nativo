@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 import javax.inject.Inject
 
 data class PreviewUiState(
@@ -44,6 +45,7 @@ class PreviewViewModel @Inject constructor(
         private const val DRAG_DISMISS_THRESHOLD = 150f
         private const val DRAG_VELOCITY_THRESHOLD = 800f
         private const val CHROME_AUTOHIDE_MS = 4_000L
+        private const val ALBUM_NAME = "GeoSnap Cam"
     }
 
     private val _uiState = MutableStateFlow(PreviewUiState())
@@ -57,16 +59,20 @@ class PreviewViewModel @Inject constructor(
         sessionPaths: List<String>,
         sessionIsVideo: List<Boolean>,
     ) {
-        val index = sessionPaths.indexOf(mediaPath).let {
-            if (it >= 0) it else (sessionPaths.size - 1).coerceAtLeast(0)
-        }
+        val library = loadPrivateGeoSnapLibrary(mediaPath, isVideo, sessionPaths, sessionIsVideo)
+        val paths = library.map { it.path }
+        val videos = library.map { it.isVideo }
+        val index = paths.indexOf(mediaPath).coerceAtLeast(0)
+        val currentPath = paths.getOrElse(index) { mediaPath }
+        val currentIsVideo = videos.getOrElse(index) { isVideo }
+
         _uiState.update {
             it.copy(
-                currentPath = mediaPath,
-                currentIsVideo = isVideo,
-                activeIndex = index,
-                sessionPaths = sessionPaths,
-                sessionIsVideo = sessionIsVideo,
+                currentPath = currentPath,
+                currentIsVideo = currentIsVideo,
+                activeIndex = 0,
+                sessionPaths = paths,
+                sessionIsVideo = videos,
             )
         }
         scheduleAutohide()
@@ -102,7 +108,9 @@ class PreviewViewModel @Inject constructor(
         }
     }
 
-    fun onSeekRequest(positionMs: Long): Long = positionMs  // pass-through; ExoPlayer handles actual seek
+    fun onSeekRequest(positionMs: Long) {
+        _uiState.update { it.copy(videoPositionMs = positionMs) }
+    }
 
     // ── Chrome visibility ─────────────────────────────────────────────────────
 
@@ -154,7 +162,11 @@ class PreviewViewModel @Inject constructor(
     fun deleteCurrentFile(): Boolean {
         return try {
             val path = _uiState.value.currentPath
-            File(path).delete()
+            if (path.startsWith("content://")) {
+                context.contentResolver.delete(Uri.parse(path), null, null) > 0
+            } else {
+                File(path).delete()
+            }
             _uiState.update { it.copy(showDeleteDialog = false) }
             true
         } catch (e: Exception) {
@@ -169,12 +181,7 @@ class PreviewViewModel @Inject constructor(
         val path = _uiState.value.currentPath
         val isVideo = _uiState.value.currentIsVideo
         try {
-            val file = File(path)
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file,
-            )
+            val uri = path.toShareUri()
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = if (isVideo) "video/mp4" else "image/jpeg"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -205,5 +212,82 @@ class PreviewViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         autohideJob?.cancel()
+    }
+
+    private data class MediaEntry(
+        val path: String,
+        val isVideo: Boolean,
+        val modifiedAt: Long,
+    )
+
+    private fun loadPrivateGeoSnapLibrary(
+        mediaPath: String,
+        isVideo: Boolean,
+        sessionPaths: List<String>,
+        sessionIsVideo: List<Boolean>,
+    ): List<MediaEntry> {
+        val entries = linkedMapOf<String, MediaEntry>()
+
+        sessionPaths.forEachIndexed { index, path ->
+            if (path.isBlank()) return@forEachIndexed
+            val file = path.takeUnless { it.startsWith("content://") }?.let(::File)
+            val modifiedAt = file?.takeIf { it.exists() }?.lastModified() ?: System.currentTimeMillis()
+            entries[path] = MediaEntry(
+                path = path,
+                isVideo = sessionIsVideo.getOrElse(index) { path.isVideoPath() },
+                modifiedAt = modifiedAt,
+            )
+        }
+
+        scanAppMediaDir().forEach { entries[it.path] = it }
+
+        if (!entries.containsKey(mediaPath)) {
+            val file = mediaPath.takeUnless { it.startsWith("content://") }?.let(::File)
+            entries[mediaPath] = MediaEntry(
+                path = mediaPath,
+                isVideo = isVideo,
+                modifiedAt = file?.takeIf { it.exists() }?.lastModified() ?: System.currentTimeMillis(),
+            )
+        }
+
+        val currentEntry = entries[mediaPath]
+        val orderedEntries = entries.values
+            .filter { it.path.startsWith("content://") || File(it.path).exists() }
+            .sortedByDescending { it.modifiedAt }
+
+        return if (currentEntry != null) {
+            listOf(currentEntry) + orderedEntries.filterNot { it.path == mediaPath }
+        } else {
+            orderedEntries
+        }
+    }
+
+    private fun scanAppMediaDir(): List<MediaEntry> {
+        val dir = File(context.getExternalFilesDir(null), ALBUM_NAME)
+        return dir.listFiles()
+            ?.asSequence()
+            ?.filter { it.isFile && it.extension.lowercase(Locale.US) in setOf("jpg", "jpeg", "mp4") }
+            ?.map {
+                MediaEntry(
+                    path = it.absolutePath,
+                    isVideo = it.extension.equals("mp4", ignoreCase = true),
+                    modifiedAt = it.lastModified(),
+                )
+            }
+            ?.toList()
+            .orEmpty()
+    }
+
+    private fun String.isVideoPath(): Boolean {
+        return endsWith(".mp4", ignoreCase = true) || startsWith("content://media/external/video")
+    }
+
+    private fun String.toShareUri(): Uri {
+        if (startsWith("content://")) return Uri.parse(this)
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            File(this),
+        )
     }
 }
