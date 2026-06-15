@@ -32,6 +32,15 @@ class WatermarkRenderer(
         internal const val PADDING = 22f
         internal const val HORIZONTAL_GAP = 18f
         internal const val MAP_WIDTH = 176f
+        private const val GOOGLE_MULTICOLOR = 0
+        private val GOOGLE_COLORS = intArrayOf(
+            0xFF4285F4.toInt(),
+            0xFFEA4335.toInt(),
+            0xFFFBBC05.toInt(),
+            0xFF4285F4.toInt(),
+            0xFF34A853.toInt(),
+            0xFFEA4335.toInt(),
+        )
 
         /**
          * Measure the size of the watermark without actually rendering it.
@@ -225,15 +234,17 @@ class WatermarkRenderer(
         }
 
         // ── Weather metrics row ──
-        val weatherTop = PADDING + measured.innerHeight - measured.weatherRowHeight
-        if (!isCrystal && !isPill) {
-            canvas.drawLine(
-                contentX, weatherTop - measured.weatherDividerGap,
-                contentX + textMaxWidth, weatherTop - measured.weatherDividerGap,
-                dividerPaint
-            )
+        if (config.showWeather) {
+            val weatherTop = PADDING + measured.innerHeight - measured.weatherRowHeight
+            if (!isCrystal && !isPill) {
+                canvas.drawLine(
+                    contentX, weatherTop - measured.weatherDividerGap,
+                    contentX + textMaxWidth, weatherTop - measured.weatherDividerGap,
+                    dividerPaint
+                )
+            }
+            drawMetricRow(canvas, contentX, weatherTop, textMaxWidth, measured, isPill)
         }
-        drawMetricRow(canvas, contentX, weatherTop, textMaxWidth, measured, isPill)
     }
 
     // ── Map drawing ──────────────────────────────────────────────────────────
@@ -297,9 +308,6 @@ class WatermarkRenderer(
         }
 
         val text = "Google"
-        val textWidth = tp.measureText(text)
-        val textHeight = tp.descent() - tp.ascent()
-
         val textX = rect.left + 8f + 5f * scale
         val textY = rect.bottom - 9f - 2f * scale - tp.descent()
 
@@ -312,7 +320,21 @@ class WatermarkRenderer(
             }
             canvas.drawText(text, textX, textY, outlinePaint)
         }
-        canvas.drawText(text, textX, textY, tp)
+        if (color == GOOGLE_MULTICOLOR) {
+            drawGoogleMulticolor(canvas, textX, textY, tp)
+        } else {
+            canvas.drawText(text, textX, textY, tp)
+        }
+    }
+
+    private fun drawGoogleMulticolor(canvas: Canvas, x: Float, y: Float, paint: TextPaint) {
+        var letterX = x
+        "Google".forEachIndexed { index, letter ->
+            val value = letter.toString()
+            paint.color = GOOGLE_COLORS[index]
+            canvas.drawText(value, letterX, y, paint)
+            letterX += paint.measureText(value)
+        }
     }
 
     // ── Paragraph rendering ──────────────────────────────────────────────────
@@ -528,9 +550,11 @@ private fun measure(
         maxTextWidth = max(maxTextWidth, textWidth(dateLine, bodyPaint))
     }
 
-    val weatherDividerGap = 10f * s
+    val weatherDividerGap = if (config.showWeather) 10f * s else 0f
     val weatherWidth = textWidth("? --.- °C", metricPaint) * 3 + weatherDividerGap * 2
-    maxTextWidth = max(maxTextWidth, weatherWidth)
+    if (config.showWeather) {
+        maxTextWidth = max(maxTextWidth, weatherWidth)
+    }
 
     val contentWidth = min(maxTextWidth, maxAllowedContentWidth)
     val actualTotalWidth = WatermarkRenderer.PADDING + mapW + WatermarkRenderer.HORIZONTAL_GAP +
@@ -556,8 +580,17 @@ private fun measure(
         textBlockHeight += textHeight(dateLine, bodyPaint, contentWidth)
     }
 
-    val weatherRowHeight = textHeight("? --.- °C", metricPaint, contentWidth / 3) + 2
-    val rightMinHeight = textBlockHeight + (weatherDividerGap * 2) + weatherRowHeight + 4
+    val weatherRowHeight = if (config.showWeather) {
+        textHeight("? --.- °C", metricPaint, contentWidth / 3) + 2
+    } else {
+        0f
+    }
+    val weatherExtraHeight = if (config.showWeather) {
+        (weatherDividerGap * 2) + weatherRowHeight + 4
+    } else {
+        0f
+    }
+    val rightMinHeight = textBlockHeight + weatherExtraHeight
     val innerHeight = max(190f * layoutS, rightMinHeight)
     val totalHeight = innerHeight + (WatermarkRenderer.PADDING * 2)
 

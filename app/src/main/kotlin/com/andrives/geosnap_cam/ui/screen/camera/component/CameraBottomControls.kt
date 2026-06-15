@@ -37,7 +37,6 @@ fun CameraBottomControls(
     recordingSeconds: Int,
     lastCapturedPath: String?,
     lastCapturedIsVideo: Boolean,
-    showControls: Boolean,
     iconRotationDegrees: Float,
     onModeTap: (CameraMode) -> Unit,
     onShutterTap: () -> Unit,
@@ -45,6 +44,7 @@ fun CameraBottomControls(
     onGalleryTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val rotation by animateFloatAsState(targetValue = iconRotationDegrees, label = "bottomControlsRotation")
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -59,7 +59,7 @@ fun CameraBottomControls(
 
         // Mode selector (Photo / Video)
         AnimatedVisibility(
-            visible = showControls && !isRecording,
+            visible = !isRecording,
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
@@ -80,7 +80,7 @@ fun CameraBottomControls(
                 path = lastCapturedPath,
                 isVideo = lastCapturedIsVideo,
                 isProcessing = processingState == ProcessingState.PROCESSING,
-                rotationDegrees = iconRotationDegrees,
+                rotationDegrees = rotation,
                 onClick = onGalleryTap,
             )
 
@@ -94,7 +94,7 @@ fun CameraBottomControls(
 
             // Switch camera button
             AnimatedVisibility(
-                visible = showControls && !isRecording,
+                visible = !isRecording,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -102,10 +102,10 @@ fun CameraBottomControls(
                     icon = Icons.Default.FlipCameraAndroid,
                     contentDescription = "Cambiar cámara",
                     onClick = onSwitchCamera,
-                    modifier = Modifier.rotate(iconRotationDegrees),
+                    modifier = Modifier.rotate(rotation),
                 )
             }
-            if (!showControls || isRecording) {
+            if (isRecording) {
                 Spacer(modifier = Modifier.size(48.dp))
             }
         }

@@ -39,6 +39,7 @@ data class WatermarkConfig(
     val showDate: Boolean = true,
     val showAddress: Boolean = true,
     val showCityCoords: Boolean = true,
+    val showWeather: Boolean = true,
     val template: WatermarkTemplateType = WatermarkTemplateType.CRYSTAL,
     val mapType: WatermarkMapType = WatermarkMapType.STANDARD,
     val titleScale: Double = 0.55,

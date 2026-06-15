@@ -31,7 +31,6 @@ fun WatermarkSettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Pass current location to ViewModel for live map preview
     LaunchedEffect(currentLocation) {
         viewModel.setCurrentLocation(currentLocation)
     }
@@ -83,29 +82,32 @@ fun WatermarkSettingsScreen(
                     )
                 ),
         ) {
-            LazyColumn(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(
-                    start = 16.dp, end = 16.dp,
-                    top = 8.dp, bottom = 32.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 // ── Live Preview ───────────────────────────────────────────
-                item {
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     SettingsPreviewCard(
                         config = config,
                         location = previewLocation,
                         mapBitmap = uiState.previewMapBitmap,
                     )
                 }
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentPadding = PaddingValues(16.dp, 10.dp, 16.dp, 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
 
                 // ── Template / Style ──────────────────────────────────────
                 item {
                     SettingsSectionCard(title = "Plantilla de Diseño") {
-                        // Template selector
                         Column(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -230,51 +232,22 @@ fun WatermarkSettingsScreen(
 
                 // ── Map attribution ───────────────────────────────────────
                 item {
-                    SettingsSectionCard(title = "Marca del Mapa") {
-                        SliderSettingTile(
-                            icon = Icons.Default.FormatSize,
-                            title = "Tamaño de atribución",
-                            valueLabel = "${(config.mapAttributionScale * 100).toInt()}%",
-                            value = config.mapAttributionScale.toFloat(),
-                            min = 0.7f, max = 2.2f, steps = 14,
-                            onChanged = { viewModel.setMapAttributionScale(it.toDouble()) },
-                        )
-                        SettingsDivider()
-                        SliderSettingTile(
-                            icon = Icons.Default.Circle,
-                            title = "Contorno de atribución",
-                            valueLabel = "${"%.1f".format(config.mapAttributionOutlineWidth)} px",
-                            value = config.mapAttributionOutlineWidth.toFloat(),
-                            min = 0f, max = 4f, steps = 15,
-                            onChanged = { viewModel.setMapAttributionOutlineWidth(it.toDouble()) },
-                        )
-                        SettingsDivider()
-                        ColorPickerTile(
-                            icon = Icons.Default.Brush,
-                            title = "Color de atribución",
-                            selectedArgb = config.mapAttributionColorValue,
-                            onSelected = viewModel::setMapAttributionColor,
-                            colors = listOf(
-                                0xFFFFFFFF.toInt(),
-                                0xFF000000.toInt(),
-                                0,  // Multi-color Google logo
-                                0xFF4285F4.toInt(),
-                                0xFF34A853.toInt(),
-                                0xFFFBBC05.toInt(),
-                                0xFFEA4335.toInt(),
-                            ),
-                        )
-                    }
+                    MapAttributionSettings(
+                        config = config,
+                        onScaleChanged = viewModel::setMapAttributionScale,
+                        onOutlineChanged = viewModel::setMapAttributionOutlineWidth,
+                        onColorChanged = viewModel::setMapAttributionColor,
+                    )
                 }
 
                 // ── Content ───────────────────────────────────────────────
                 item {
                     SettingsSectionCard(title = "Contenido") {
-                        // Map type
                         SettingTile(
                             icon = Icons.Default.Map,
                             title = "Vista del mapa",
                             subtitle = "Elige el estilo del mapa dentro de la marca",
+                            stackTrailing = true,
                             trailing = {
                                 SegmentedControl(
                                     options = listOf(
@@ -284,8 +257,16 @@ fun WatermarkSettingsScreen(
                                     ),
                                     selected = config.mapType,
                                     onSelect = viewModel::setMapType,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             },
+                        )
+                        SettingsDivider()
+                        ToggleSettingTile(
+                            icon = Icons.Default.Cloud,
+                            title = "Mostrar clima",
+                            checked = config.showWeather,
+                            onCheckedChange = viewModel::setShowWeather,
                         )
                         SettingsDivider()
                         ToggleSettingTile(
@@ -309,6 +290,7 @@ fun WatermarkSettingsScreen(
                             onCheckedChange = viewModel::setShowCityCoords,
                         )
                     }
+                }
                 }
             }
         }

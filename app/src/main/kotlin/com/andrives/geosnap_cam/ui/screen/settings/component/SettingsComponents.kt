@@ -66,33 +66,53 @@ fun SettingTile(
     subtitle: String? = null,
     trailing: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    stackTrailing: Boolean = false,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+    val contentModifier = Modifier
+        .fillMaxWidth()
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        .padding(horizontal = 16.dp, vertical = if (stackTrailing) 10.dp else 14.dp)
+
+    @Composable
+    fun Header() = Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF007AFF).copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(17.dp))
-        }
-
+        SettingIcon(icon)
         Column(modifier = Modifier.weight(1f)) {
             Text(title, color = Color.White, fontSize = 15.sp)
-            if (subtitle != null) {
-                Text(subtitle, color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp, lineHeight = 16.sp)
+            subtitle?.let {
+                Text(it, color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp, lineHeight = 16.sp)
             }
         }
+    }
 
+    if (stackTrailing) Column(
+        modifier = contentModifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Header()
         trailing?.invoke()
+    } else Row(
+        modifier = contentModifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Header()
+        trailing?.invoke()
+    }
+}
+
+@Composable
+private fun SettingIcon(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF007AFF).copy(alpha = 0.18f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(17.dp))
     }
 }
 

@@ -28,6 +28,7 @@ class WatermarkSettingsRepository @Inject constructor(
             showDate = prefs.getBoolean("wm_showDate", true),
             showAddress = prefs.getBoolean("wm_showAddress", true),
             showCityCoords = prefs.getBoolean("wm_showCityCoords", true),
+            showWeather = prefs.getBoolean("wm_showWeather", true),
             template = WatermarkTemplateType.fromKey(
                 prefs.getString("wm_template", null) ?: WatermarkTemplateType.CRYSTAL.key
             ),
@@ -60,6 +61,7 @@ class WatermarkSettingsRepository @Inject constructor(
             putBoolean("wm_showDate", config.showDate)
             putBoolean("wm_showAddress", config.showAddress)
             putBoolean("wm_showCityCoords", config.showCityCoords)
+            putBoolean("wm_showWeather", config.showWeather)
             putString("wm_template", config.template.key)
             putString("wm_mapType", config.mapType.key)
             putFloat("wm_titleScale", config.titleScale.toFloat())

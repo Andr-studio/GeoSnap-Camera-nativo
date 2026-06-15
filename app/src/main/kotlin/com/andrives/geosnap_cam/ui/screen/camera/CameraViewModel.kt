@@ -7,6 +7,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
+import android.view.OrientationEventListener
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.MeteringPoint
@@ -65,6 +66,8 @@ data class CameraUiState(
     val zoomRatio: Float = 1f,
     val isFlashMenuOpen: Boolean = false,
     val showFocusRing: Boolean = false,
+    val isFocusLocked: Boolean = false,
+    val isFocusIndicatorActive: Boolean = false,
     val focusX: Float = 0.5f,
     val focusY: Float = 0.5f,
     val showSecondaryControls: Boolean = true,
@@ -107,8 +110,10 @@ class CameraViewModel @Inject constructor(
     // ── Recording clock ──────────────────────────────────────────────────────
     private var clockJob: Job? = null
 
-    // ── Secondary controls timer ─────────────────────────────────────────────
-    private var controlsTimerJob: Job? = null
+    // ── Orientation Tracker ──────────────────────────────────────────────────
+    private var orientationListener: OrientationEventListener? = null
+    private var lastSnappedOrientation = 0
+    private var accumulatedRotation = 0f
 
     // ── Focus ring ───────────────────────────────────────────────────────────
     private var focusJob: Job? = null
@@ -119,7 +124,7 @@ class CameraViewModel @Inject constructor(
     init {
         loadSettings()
         loadRecentSession()
-        startControlsTimer()
+        setupOrientationListener()
     }
 
     // ── Settings & Session ───────────────────────────────────────────────────
@@ -240,12 +245,10 @@ class CameraViewModel @Inject constructor(
     fun setMode(mode: CameraMode) {
         if (_uiState.value.isRecording) return
         _uiState.update { it.copy(mode = mode) }
-        resetControlsTimer()
     }
 
     fun toggleFlashMenu() {
         _uiState.update { it.copy(isFlashMenuOpen = !it.isFlashMenuOpen) }
-        resetControlsTimer()
     }
 
     fun closeFlashMenu() {
@@ -254,7 +257,6 @@ class CameraViewModel @Inject constructor(
 
     fun setFlashMode(mode: FlashMode) {
         _uiState.update { it.copy(flashMode = mode, isFlashMenuOpen = false) }
-        resetControlsTimer()
     }
 
     // ── Zoom ──────────────────────────────────────────────────────────────────
@@ -266,13 +268,60 @@ class CameraViewModel @Inject constructor(
     // ── Focus ring ────────────────────────────────────────────────────────────
 
     fun onTapToFocus(x: Float, y: Float) {
-        _uiState.update { it.copy(showFocusRing = true, focusX = x, focusY = y) }
+        _uiState.update {
+            it.copy(
+                showFocusRing = true,
+                isFocusLocked = false,
+                isFocusIndicatorActive = true,
+                focusX = x,
+                focusY = y,
+            )
+        }
+        scheduleFocusIndicatorIdle()
+    }
+
+    fun onLongPressToFocus(x: Float, y: Float) {
+        _uiState.update {
+            it.copy(
+                showFocusRing = true,
+                isFocusLocked = true,
+                isFocusIndicatorActive = true,
+                focusX = x,
+                focusY = y,
+            )
+        }
+        scheduleFocusIndicatorIdle()
+    }
+
+    fun onFocusIndicatorInteraction() {
+        if (!_uiState.value.showFocusRing) return
+        _uiState.update { it.copy(isFocusIndicatorActive = true) }
+        scheduleFocusIndicatorIdle()
+    }
+
+    private fun scheduleFocusIndicatorIdle() {
         focusJob?.cancel()
         focusJob = viewModelScope.launch {
-            delay(1_500L)
-            _uiState.update { it.copy(showFocusRing = false) }
+            delay(1_200L)
+            _uiState.update { state ->
+                if (state.isFocusLocked) {
+                    state.copy(isFocusIndicatorActive = false)
+                } else {
+                    state.copy(showFocusRing = false, isFocusIndicatorActive = false)
+                }
+            }
         }
-        resetControlsTimer()
+    }
+
+    fun resetFocus() {
+        focusJob?.cancel()
+        _uiState.update {
+            it.copy(
+                showFocusRing = false,
+                isFocusLocked = false,
+                isFocusIndicatorActive = false,
+            )
+        }
     }
 
     // ── Camera switch ─────────────────────────────────────────────────────────
@@ -292,13 +341,11 @@ class CameraViewModel @Inject constructor(
             delay(400)
             _uiState.update { it.copy(isSwitchingCamera = false) }
         }
-        resetControlsTimer()
     }
 
     // ── Photo capture ─────────────────────────────────────────────────────────
 
     fun onPhotoCaptured(rawPath: String) {
-        resetControlsTimer()
         viewModelScope.launch {
             _uiState.update { it.copy(processingState = ProcessingState.PROCESSING) }
             try {
@@ -383,21 +430,36 @@ class CameraViewModel @Inject constructor(
         }
     }
 
-    // ── Secondary controls ────────────────────────────────────────────────────
+    // ── Orientation Tracking ──────────────────────────────────────────────────
 
-    fun resetControlsTimer() {
-        controlsTimerJob?.cancel()
-        _uiState.update { it.copy(showSecondaryControls = true) }
-        startControlsTimer()
-    }
+    private fun setupOrientationListener() {
+        orientationListener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
 
-    private fun startControlsTimer() {
-        controlsTimerJob = viewModelScope.launch {
-            delay(4_000)
-            if (isActive) {
-                _uiState.update { it.copy(showSecondaryControls = false) }
+                // Snap to nearest 90 degrees
+                val snapped = when (orientation) {
+                    in 45..134 -> 90   // Device right
+                    in 135..224 -> 180 // Device upside down
+                    in 225..314 -> 270 // Device left
+                    else -> 0          // Device upright
+                }
+
+                if (snapped != lastSnappedOrientation) {
+                    var diff = snapped - lastSnappedOrientation
+                    // Find shortest path to prevent wrapping jumps
+                    if (diff == 270) diff = -90
+                    else if (diff == -270) diff = 90
+
+                    // We subtract because the UI must rotate opposite to the device
+                    accumulatedRotation -= diff
+                    lastSnappedOrientation = snapped
+
+                    _uiState.update { it.copy(iconRotationDegrees = accumulatedRotation) }
+                }
             }
         }
+        orientationListener?.enable()
     }
 
     // ── Clock ─────────────────────────────────────────────────────────────────
@@ -488,5 +550,6 @@ class CameraViewModel @Inject constructor(
         super.onCleared()
         stopLocationUpdates()
         stopClock()
+        orientationListener?.disable()
     }
 }

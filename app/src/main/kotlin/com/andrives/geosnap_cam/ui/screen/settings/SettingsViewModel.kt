@@ -127,6 +127,9 @@ class SettingsViewModel @Inject constructor(
     fun setShowCityCoords(value: Boolean) =
         updateConfig(_uiState.value.config.copy(showCityCoords = value))
 
+    fun setShowWeather(value: Boolean) =
+        updateConfig(_uiState.value.config.copy(showWeather = value))
+
     fun setMapAttributionScale(value: Double) =
         updateConfig(_uiState.value.config.copy(mapAttributionScale = value))
 
