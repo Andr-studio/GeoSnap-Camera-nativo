@@ -82,8 +82,13 @@ object PhotoWatermarkProcessor {
 
             // Composite watermark onto photo
             val resultBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val canvas = Canvas(resultBitmap)
-            canvas.drawBitmap(scaledWatermark, x.toFloat(), y.toFloat(), Paint(Paint.FILTER_BITMAP_FLAG))
+            
+            // --- METODO 1: C++ Nativo (Activo) ---
+            com.andrives.geosnap_cam.NativeEngine.blendOverlayOnBitmap(resultBitmap, scaledWatermark, x, y)
+            
+            // --- METODO 2: Canvas de Android (Comentado para pruebas) ---
+            // val canvas = Canvas(resultBitmap)
+            // canvas.drawBitmap(scaledWatermark, x.toFloat(), y.toFloat(), Paint(Paint.FILTER_BITMAP_FLAG))
 
             // Save result as JPEG
             FileOutputStream(outputPath).use { fos ->
@@ -165,6 +170,130 @@ object PhotoWatermarkProcessor {
         } catch (e: Exception) {
             Log.e(TAG, "writePhotoExif failed: ${e.message}")
             // Don't fail the photo save flow for EXIF errors
+        }
+    }
+
+    suspend fun applyToMemory(
+        imageBytes: ByteArray,
+        rotationDegrees: Int,
+        watermarkBitmap: Bitmap,
+        config: WatermarkConfig,
+        location: LocationData,
+        outputPath: String
+    ): String? = withContext(Dispatchers.IO) {
+        val stopwatch = System.currentTimeMillis()
+
+        try {
+            val opts = BitmapFactory.Options().apply {
+                inMutable = true
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val originalBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, opts)
+                ?: run {
+                    Log.e(TAG, "Failed to decode input bytes")
+                    return@withContext null
+                }
+
+            val orientation = when (rotationDegrees) {
+                90 -> ExifInterface.ORIENTATION_ROTATE_90
+                180 -> ExifInterface.ORIENTATION_ROTATE_180
+                270 -> ExifInterface.ORIENTATION_ROTATE_270
+                else -> ExifInterface.ORIENTATION_NORMAL
+            }
+
+            // Optimize rotation to produce a mutable bitmap directly without an extra .copy()
+            val resultBitmap = if (orientation == ExifInterface.ORIENTATION_NORMAL) {
+                originalBitmap
+            } else {
+                val matrix = Matrix()
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> {
+                        matrix.postRotate(90f)
+                        matrix.postScale(-1f, 1f)
+                    }
+                    ExifInterface.ORIENTATION_TRANSVERSE -> {
+                        matrix.postRotate(-90f)
+                        matrix.postScale(-1f, 1f)
+                    }
+                }
+                val isRotated90or270 = orientation == ExifInterface.ORIENTATION_ROTATE_90 ||
+                    orientation == ExifInterface.ORIENTATION_ROTATE_270 ||
+                    orientation == ExifInterface.ORIENTATION_TRANSPOSE ||
+                    orientation == ExifInterface.ORIENTATION_TRANSVERSE
+                
+                val outW = if (isRotated90or270) originalBitmap.height else originalBitmap.width
+                val outH = if (isRotated90or270) originalBitmap.width else originalBitmap.height
+                
+                // Create directly as mutable ARGB_8888
+                val rotatedMutable = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(rotatedMutable)
+                
+                // Adjust matrix to center the rotation
+                val srcRectF = android.graphics.RectF(0f, 0f, originalBitmap.width.toFloat(), originalBitmap.height.toFloat())
+                val dstRectF = android.graphics.RectF(0f, 0f, outW.toFloat(), outH.toFloat())
+                matrix.setRectToRect(srcRectF, dstRectF, Matrix.ScaleToFit.CENTER)
+                
+                // For direct rotation without setRectToRect issues (since it's exactly 90/180/270), 
+                // it's better to manually translate if using postRotate.
+                // Re-building the matrix properly for standard rotation around center:
+                matrix.reset()
+                matrix.postTranslate(-originalBitmap.width / 2f, -originalBitmap.height / 2f)
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                }
+                matrix.postTranslate(outW / 2f, outH / 2f)
+
+                canvas.drawBitmap(originalBitmap, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
+                originalBitmap.recycle()
+                rotatedMutable
+            }
+
+            val widthFactor = config.effectiveGlassWidth.coerceIn(0.32, 0.96)
+            val safeBaseWidth = kotlin.math.min(resultBitmap.width, resultBitmap.height)
+            val targetWidth = (safeBaseWidth * widthFactor).toInt()
+            val targetHeight = (targetWidth.toDouble() * watermarkBitmap.height / watermarkBitmap.width).toInt()
+            val safeWidth = targetWidth.coerceIn(1, resultBitmap.width)
+            val safeHeight = targetHeight.coerceIn(1, resultBitmap.height)
+
+            val x = (resultBitmap.width - safeWidth) / 2
+            val y = (resultBitmap.height - safeHeight - (resultBitmap.height * 0.02).toInt())
+                .coerceIn(0, resultBitmap.height - safeHeight)
+
+            val scaledWatermark = Bitmap.createScaledBitmap(watermarkBitmap, safeWidth, safeHeight, true)
+
+            com.andrives.geosnap_cam.NativeEngine.blendOverlayOnBitmap(resultBitmap, scaledWatermark, x, y)
+
+            FileOutputStream(outputPath).use { fos ->
+                resultBitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos)
+            }
+
+            try {
+                val outputExif = ExifInterface(outputPath)
+                outputExif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+                outputExif.setLatLong(location.latitude, location.longitude)
+                outputExif.setAttribute(ExifInterface.TAG_GPS_PROCESSING_METHOD, "GPS")
+                outputExif.saveAttributes()
+            } catch (e: Exception) {
+                Log.e(TAG, "writePhotoExif failed: ${e.message}")
+            }
+
+            resultBitmap.recycle()
+            scaledWatermark.recycle()
+
+            val elapsed = System.currentTimeMillis() - stopwatch
+            Log.d(TAG, "⏱️ Memory Photo watermark applied in ${elapsed}ms")
+
+            outputPath
+        } catch (e: Exception) {
+            Log.e(TAG, "applyToMemory failed: ${e.message}", e)
+            null
         }
     }
 }

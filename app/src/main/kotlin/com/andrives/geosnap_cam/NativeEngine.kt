@@ -20,4 +20,15 @@ object NativeEngine {
         isFrontCamera: Boolean,
         isPlanar: Boolean
     )
+
+    /**
+     * Blends the [overlay] Bitmap directly onto the [target] Bitmap at the given ([x], [y]) coordinates.
+     * Both Bitmaps must be ARGB_8888.
+     */
+    external fun blendOverlayOnBitmap(
+        target: Bitmap,
+        overlay: Bitmap,
+        x: Int,
+        y: Int
+    )
 }

@@ -172,10 +172,77 @@ nativeProcessVideoFrame(
     env->ReleaseByteArrayElements(targetNv12, outNv12, 0);
 }
 
-// Removed unused nativeBlendOverlayOnBitmap
+extern "C"
+JNIEXPORT void JNICALL
+nativeBlendOverlayOnBitmap(
+    JNIEnv* env, jobject thiz,
+    jobject targetBitmap, jobject overlayBitmap,
+    jint overlayX, jint overlayY) {
+
+    AndroidBitmapInfo targetInfo, overlayInfo;
+    uint32_t* targetPixels = nullptr;
+    uint32_t* overlayPixels = nullptr;
+
+    if (AndroidBitmap_getInfo(env, targetBitmap, &targetInfo) != 0 ||
+        AndroidBitmap_getInfo(env, overlayBitmap, &overlayInfo) != 0) {
+        LOGE("Failed to get bitmap info");
+        return;
+    }
+
+    if (targetInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        overlayInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        LOGE("Bitmaps must be RGBA_8888");
+        return;
+    }
+
+    if (AndroidBitmap_lockPixels(env, targetBitmap, (void**)&targetPixels) != 0 ||
+        AndroidBitmap_lockPixels(env, overlayBitmap, (void**)&overlayPixels) != 0) {
+        LOGE("Failed to lock bitmap pixels");
+        if (targetPixels) AndroidBitmap_unlockPixels(env, targetBitmap);
+        if (overlayPixels) AndroidBitmap_unlockPixels(env, overlayBitmap);
+        return;
+    }
+
+    int targetWidth = targetInfo.width;
+    int targetHeight = targetInfo.height;
+    int overWidth = overlayInfo.width;
+    int overHeight = overlayInfo.height;
+
+    for (int j = 0; j < overHeight; ++j) {
+        int targetJ = overlayY + j;
+        if (targetJ < 0 || targetJ >= targetHeight) continue;
+
+        for (int i = 0; i < overWidth; ++i) {
+            int targetI = overlayX + i;
+            if (targetI < 0 || targetI >= targetWidth) continue;
+
+            uint32_t overPx = overlayPixels[j * overWidth + i];
+            uint8_t a = (overPx >> 24) & 0xFF;
+            if (a == 0) continue;
+
+            uint32_t& targetPx = targetPixels[targetJ * targetWidth + targetI];
+            if (a == 255) {
+                targetPx = overPx;
+                continue;
+            }
+
+            uint8_t tr = targetPx & 0xFF;
+            uint8_t tg = (targetPx >> 8) & 0xFF;
+            uint8_t tb = (targetPx >> 16) & 0xFF;
+
+            blendPixel(tr, tg, tb, overPx);
+
+            targetPx = (255 << 24) | (tb << 16) | (tg << 8) | tr;
+        }
+    }
+
+    AndroidBitmap_unlockPixels(env, targetBitmap);
+    AndroidBitmap_unlockPixels(env, overlayBitmap);
+}
 
 static const JNINativeMethod kMethods[] = {
     {"processVideoFrame", "(Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;IIIILandroid/graphics/Bitmap;III[BZZ)V", (void*)nativeProcessVideoFrame},
+    {"blendOverlayOnBitmap", "(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;II)V", (void*)nativeBlendOverlayOnBitmap},
 };
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {

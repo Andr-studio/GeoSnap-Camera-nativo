@@ -354,20 +354,20 @@ class CameraViewModel @Inject constructor(
 
     // ── Photo capture ─────────────────────────────────────────────────────────
 
-    fun onPhotoCaptured(rawPath: String) {
+    fun onPhotoCapturedInMem(imageBytes: ByteArray, rotationDegrees: Int) {
         viewModelScope.launch {
             _uiState.update { it.copy(processingState = ProcessingState.PROCESSING) }
             try {
                 val location = _uiState.value.location
                 if (location == null) {
                     Log.w(TAG, "No GPS location — saving photo without watermark")
-                    addToSession(saveRawPhotoFallback(rawPath), false)
+                    addToSession(saveRawPhotoFallback(imageBytes), false)
                     _uiState.update { it.copy(processingState = ProcessingState.DONE) }
                     return@launch
                 }
 
                 val outputPath = generateOutputPath(isVideo = false)
-                val result = watermarkService.applyWatermark(rawPath, false, location, outputPath)
+                val result = watermarkService.applyLiveWatermarkToPhoto(imageBytes, rotationDegrees, location, outputPath)
 
                 if (result is WatermarkService.WatermarkResult.Success) {
                     val savedUri = mediaSaver.saveToGallery(result.outputPath, false)
@@ -376,12 +376,11 @@ class CameraViewModel @Inject constructor(
                     analyticsService.logPhotoCapture()
                     vibrateCapture()
                 } else {
-                    // Fallback: save raw photo
-                    addToSession(saveRawPhotoFallback(rawPath), false)
+                    addToSession(saveRawPhotoFallback(imageBytes), false)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "onPhotoCaptured failed: ${e.message}", e)
-                addToSession(saveRawPhotoFallback(rawPath), false)
+                Log.e(TAG, "onPhotoCapturedInMem failed: ${e.message}", e)
+                addToSession(saveRawPhotoFallback(imageBytes), false)
             } finally {
                 _uiState.update { it.copy(processingState = ProcessingState.IDLE) }
             }
@@ -516,15 +515,15 @@ class CameraViewModel @Inject constructor(
 
     // ── File paths ────────────────────────────────────────────────────────────
 
-    private suspend fun saveRawPhotoFallback(rawPath: String): String {
+    private suspend fun saveRawPhotoFallback(imageBytes: ByteArray): String {
         val outputPath = generateOutputPath(isVideo = false)
         return try {
-            File(rawPath).copyTo(File(outputPath), overwrite = true)
+            File(outputPath).writeBytes(imageBytes)
             mediaSaver.saveToGallery(outputPath, false)
             outputPath
         } catch (e: Exception) {
             Log.e(TAG, "saveRawPhotoFallback failed: ${e.message}", e)
-            rawPath
+            ""
         }
     }
 

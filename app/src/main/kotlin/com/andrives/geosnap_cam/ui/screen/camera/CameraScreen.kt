@@ -244,21 +244,22 @@ private fun capturePhoto(
     viewModel: CameraViewModel,
 ) {
     val capture = imageCapture ?: return
-    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-    val outputFile = File(context.cacheDir, "GeoSnap_temp_$timestamp.jpg")
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(outputFile).build()
 
     capture.takePicture(
-        outputOptions,
         ContextCompat.getMainExecutor(context),
-        object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                viewModel.onPhotoCaptured(outputFile.absolutePath)
+        object : ImageCapture.OnImageCapturedCallback() {
+            override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
+                val buffer = image.planes[0].buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                val rotation = image.imageInfo.rotationDegrees
+                image.close()
+                viewModel.onPhotoCapturedInMem(bytes, rotation)
             }
 
             override fun onError(error: ImageCaptureException) {
                 android.util.Log.e("CameraScreen", "Photo capture failed", error)
             }
-        },
+        }
     )
 }

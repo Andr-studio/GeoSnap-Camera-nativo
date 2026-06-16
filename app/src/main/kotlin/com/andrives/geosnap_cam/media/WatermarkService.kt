@@ -287,4 +287,41 @@ class WatermarkService @Inject constructor(
         }
         return VideoSize(1080, 1920)
     }
+
+    suspend fun applyLiveWatermarkToPhoto(
+        imageBytes: ByteArray,
+        rotationDegrees: Int,
+        location: LocationData,
+        outputPath: String,
+    ): WatermarkResult = withContext(Dispatchers.IO) {
+        try {
+            val config = settingsRepository.getConfig()
+            
+            val opts = android.graphics.BitmapFactory.Options()
+            opts.inJustDecodeBounds = true
+            android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, opts)
+            
+            val isRotated90or270 = rotationDegrees == 90 || rotationDegrees == 270
+            val photoW = if (isRotated90or270) opts.outHeight else opts.outWidth
+            val photoH = if (isRotated90or270) opts.outWidth else opts.outHeight
+
+            val watermarkBitmap = getLiveWatermarkBitmap(location, config, photoW, photoH)
+                ?: return@withContext WatermarkResult.Failure("Live watermark not available")
+
+            val result = PhotoWatermarkProcessor.applyToMemory(
+                imageBytes = imageBytes,
+                rotationDegrees = rotationDegrees,
+                watermarkBitmap = watermarkBitmap,
+                config = config,
+                location = location,
+                outputPath = outputPath
+            )
+            
+            if (result != null) WatermarkResult.Success(result)
+            else WatermarkResult.Failure("Photo memory processing failed")
+        } catch (e: Exception) {
+            Log.e(TAG, "applyLiveWatermarkToPhoto failed: ${e.message}", e)
+            WatermarkResult.Failure("Unexpected error: ${e.message}")
+        }
+    }
 }
