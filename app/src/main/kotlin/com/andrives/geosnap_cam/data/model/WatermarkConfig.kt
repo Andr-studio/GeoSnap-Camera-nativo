@@ -52,6 +52,7 @@ data class WatermarkConfig(
     val mapAttributionScale: Double = FIXED_MAP_ATTRIBUTION_SCALE,
     val mapAttributionOutlineWidth: Double = FIXED_MAP_ATTRIBUTION_OUTLINE_WIDTH,
     val mapAttributionColorValue: Int = 0xFFFFFFFF.toInt(),
+    val volumeButtonBehavior: VolumeButtonBehavior = VolumeButtonBehavior.BOTH,
 ) {
     companion object {
         const val WIDTH_SCALE_FACTOR = 1.0
@@ -63,4 +64,16 @@ data class WatermarkConfig(
 
     val effectiveGlassWidth: Double
         get() = glassWidth * WIDTH_SCALE_FACTOR
+}
+
+enum class VolumeButtonBehavior(val key: String) {
+    NONE("none"),
+    UP("up"),
+    DOWN("down"),
+    BOTH("both");
+
+    companion object {
+        fun fromKey(key: String): VolumeButtonBehavior =
+            entries.firstOrNull { it.key == key } ?: BOTH
+    }
 }

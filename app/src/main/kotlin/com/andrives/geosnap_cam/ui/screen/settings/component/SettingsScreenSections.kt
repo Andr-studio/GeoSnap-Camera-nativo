@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andrives.geosnap_cam.data.model.VolumeButtonBehavior
 import com.andrives.geosnap_cam.data.model.WatermarkMapType
 import com.andrives.geosnap_cam.data.model.WatermarkTemplateType
 
@@ -145,6 +147,34 @@ fun ContentSection(
             title = "Mostrar latitud y longitud",
             checked = showCoordinates,
             onCheckedChange = onShowCoordinatesChanged,
+        )
+    }
+}
+
+@Composable
+fun CameraBehaviorSection(
+    volumeBehavior: VolumeButtonBehavior,
+    onVolumeBehaviorChanged: (VolumeButtonBehavior) -> Unit,
+) {
+    SettingsSectionCard(title = "Comportamiento de la camara") {
+        SettingTile(
+            icon = Icons.Default.VolumeUp,
+            title = "Boton fisico de captura",
+            subtitle = "Usa los botones de volumen para capturar",
+            stackTrailing = true,
+            trailing = {
+                SegmentedControl(
+                    options = listOf(
+                        VolumeButtonBehavior.UP to "Subir",
+                        VolumeButtonBehavior.DOWN to "Bajar",
+                        VolumeButtonBehavior.BOTH to "Ambos",
+                        VolumeButtonBehavior.NONE to "Ninguno",
+                    ),
+                    selected = volumeBehavior,
+                    onSelect = onVolumeBehaviorChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
         )
     }
 }

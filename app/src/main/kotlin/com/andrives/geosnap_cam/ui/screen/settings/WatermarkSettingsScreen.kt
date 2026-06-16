@@ -46,6 +46,7 @@ import com.andrives.geosnap_cam.ui.screen.settings.component.SettingsPreviewCard
 import com.andrives.geosnap_cam.ui.screen.settings.component.SettingsSectionCard
 import com.andrives.geosnap_cam.ui.screen.settings.component.SliderSettingTile
 import com.andrives.geosnap_cam.ui.screen.settings.component.TemplateSection
+import com.andrives.geosnap_cam.ui.screen.settings.component.CameraBehaviorSection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,6 +140,12 @@ fun WatermarkSettingsScreen(
                         onShowDateChanged = viewModel::setShowDate,
                         onShowAddressChanged = viewModel::setShowAddress,
                         onShowCoordinatesChanged = viewModel::setShowCityCoords,
+                    )
+                }
+                item {
+                    CameraBehaviorSection(
+                        volumeBehavior = config.volumeButtonBehavior,
+                        onVolumeBehaviorChanged = viewModel::setVolumeButtonBehavior,
                     )
                 }
                 item {

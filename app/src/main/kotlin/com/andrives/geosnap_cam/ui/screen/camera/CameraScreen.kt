@@ -24,12 +24,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andrives.geosnap_cam.data.model.VolumeButtonBehavior
 import com.andrives.geosnap_cam.ui.screen.camera.component.CameraBottomControls
 import com.andrives.geosnap_cam.ui.screen.camera.component.CameraTopBar
 import com.andrives.geosnap_cam.ui.screen.camera.component.FocusExposureOverlay
@@ -64,6 +74,7 @@ fun CameraScreen(
     var isCameraVisible by remember {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
     }
+    val focusRequester = remember { FocusRequester() }
 
     DisposableEffect(Unit) {
         val window = (context as? android.app.Activity)?.window
@@ -115,6 +126,16 @@ fun CameraScreen(
         }
     }
 
+    LaunchedEffect(isCameraVisible) {
+        if (isCameraVisible) {
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // Ignore focus errors
+            }
+        }
+    }
+
     LaunchedEffect(uiState.targetRotation) {
         imageCapture?.targetRotation = uiState.targetRotation
         imageAnalysis?.targetRotation = uiState.targetRotation
@@ -123,7 +144,32 @@ fun CameraScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    val action = uiState.watermarkConfig.volumeButtonBehavior
+                    val trigger = when (event.key) {
+                        Key.VolumeUp -> action == VolumeButtonBehavior.UP || action == VolumeButtonBehavior.BOTH
+                        Key.VolumeDown -> action == VolumeButtonBehavior.DOWN || action == VolumeButtonBehavior.BOTH
+                        else -> false
+                    }
+                    if (trigger) {
+                        if (uiState.mode == CameraMode.PHOTO) {
+                            capturePhoto(context, imageCapture, viewModel)
+                        } else {
+                            if (uiState.isRecording) {
+                                viewModel.stopRecording()
+                            } else {
+                                viewModel.startRecording()
+                            }
+                        }
+                        return@onKeyEvent true
+                    }
+                }
+                false
+            },
     ) {
         if (cameraPermission.status.isGranted && isCameraVisible) {
             CameraPreview(

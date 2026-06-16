@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andrives.geosnap_cam.data.model.LocationData
+import com.andrives.geosnap_cam.data.model.VolumeButtonBehavior
 import com.andrives.geosnap_cam.data.model.WatermarkConfig
 import com.andrives.geosnap_cam.data.model.WatermarkMapType
 import com.andrives.geosnap_cam.data.model.WatermarkTemplateType
@@ -153,4 +154,7 @@ class SettingsViewModel @Inject constructor(
 
     fun setMapAttributionColor(argb: Int) =
         updateConfig(_uiState.value.config.copy(mapAttributionColorValue = argb))
+
+    fun setVolumeButtonBehavior(behavior: VolumeButtonBehavior) =
+        updateConfig(_uiState.value.config.copy(volumeButtonBehavior = behavior))
 }

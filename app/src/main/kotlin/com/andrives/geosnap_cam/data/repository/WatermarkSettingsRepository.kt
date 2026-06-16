@@ -1,6 +1,7 @@
 package com.andrives.geosnap_cam.data.repository
 
 import android.content.SharedPreferences
+import com.andrives.geosnap_cam.data.model.VolumeButtonBehavior
 import com.andrives.geosnap_cam.data.model.WatermarkConfig
 import com.andrives.geosnap_cam.data.model.WatermarkMapType
 import com.andrives.geosnap_cam.data.model.WatermarkTemplateType
@@ -48,6 +49,9 @@ class WatermarkSettingsRepository @Inject constructor(
             mapAttributionScale = WatermarkConfig.FIXED_MAP_ATTRIBUTION_SCALE,
             mapAttributionOutlineWidth = WatermarkConfig.FIXED_MAP_ATTRIBUTION_OUTLINE_WIDTH,
             mapAttributionColorValue = prefs.getInt("wm_mapAttributionColorValue", 0xFFFFFFFF.toInt()),
+            volumeButtonBehavior = VolumeButtonBehavior.fromKey(
+                prefs.getString("app_volumeButtonBehavior", null) ?: VolumeButtonBehavior.BOTH.key
+            ),
         )
         _configFlow.value = config
         return config
@@ -71,6 +75,7 @@ class WatermarkSettingsRepository @Inject constructor(
             putFloat("wm_mapAttributionScale", WatermarkConfig.FIXED_MAP_ATTRIBUTION_SCALE.toFloat())
             putFloat("wm_mapAttributionOutlineWidth", WatermarkConfig.FIXED_MAP_ATTRIBUTION_OUTLINE_WIDTH.toFloat())
             putInt("wm_mapAttributionColorValue", config.mapAttributionColorValue)
+            putString("app_volumeButtonBehavior", config.volumeButtonBehavior.key)
             apply()
         }
         _configFlow.value = config
