@@ -30,7 +30,7 @@ android {
         versionName = "1.0.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
 
         externalNativeBuild {
@@ -154,4 +154,8 @@ dependencies {
 
     // Accompanist
     implementation(libs.accompanist.permissions)
+
+    // Play Core
+    implementation(libs.play.app.update)
+    implementation(libs.play.app.update.ktx)
 }
